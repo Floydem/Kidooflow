@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#6256ee">
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css">
+  <title>KidooFlow</title>
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div class="brand"><div class="logo">🪁</div><div><h1>KidooFlow</h1><small>La famille, sans le chaos.</small></div></div>
+      <button class="pill" data-action="install">Installer</button>
+    </header>
+
+    <section class="page active" data-page="today">
+      <div class="hero">
+        <small>Prototype V0.3</small>
+        <h2>Tout ce qui mérite ton attention, au même endroit.</h2>
+        <p>ÉcoleDirecte, cahier papier, sport, santé et messages transformés en événements et tâches simples.</p>
+        <div class="chips"><span id="inboxChip">4 éléments Inbox</span><span>2 enfants</span><span>Mémoire locale</span></div>
+      </div>
+      <div class="section-head"><h3>Aujourd’hui</h3><button class="link" data-nav="agenda">Agenda</button></div>
+      <div class="stats"><article><b id="eventCount">3</b><span>événements</span></article><article><b>2</b><span>à faire</span></article><article><b id="inboxCount">4</b><span>Inbox</span></article><article><b>0</b><span>en retard 🎉</span></article></div>
+      <div class="section-head"><h3>Priorités</h3><button class="link" data-nav="inbox">Voir Inbox</button></div>
+      <div id="todayList" class="list"></div>
+    </section>
+
+    <section class="page" data-page="agenda">
+      <div class="section-head first"><h3>Agenda familial</h3><button class="link" data-action="today">Aujourd’hui</button></div>
+      <div class="week">
+        <button class="day active">Mar<br><b>15</b></button><button class="day">Mer<br><b>16</b></button><button class="day">Jeu<br><b>17</b></button><button class="day">Ven<br><b>18</b></button><button class="day">Sam<br><b>19</b></button><button class="day">Dim<br><b>20</b></button><button class="day">Lun<br><b>21</b></button>
+      </div>
+      <div id="agendaList" class="list"></div>
+    </section>
+
+    <section class="page" data-page="add">
+      <div class="section-head first"><h3>Ajouter à KidooFlow</h3></div>
+      <div class="quick-actions">
+        <button data-action="photo">📸<span>Capture</span></button>
+        <button data-action="homework">📚<span>Cahier</span></button>
+        <button data-action="voice">🎙️<span>Dicter</span></button>
+        <button data-action="appointment">📅<span>Rendez-vous</span></button>
+      </div>
+      <div class="composer">
+        <textarea id="inputText" placeholder="Ex. : Dentiste Théo mardi 6 octobre à 16h30.\n\nOu colle ici un message ÉcoleDirecte."></textarea>
+        <button class="primary" data-action="analyze">✨ Analyser</button>
+        <div id="analysis" class="analysis hidden">
+          <div class="analysis-title"><b>Proposition KidooFlow</b><span>Simulation IA</span></div>
+          <div id="analysisBody"></div>
+          <button class="primary" data-action="save-analysis">Ajouter à l’agenda</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="page" data-page="inbox">
+      <div class="section-head first"><h3>Inbox</h3><button class="link" data-action="reset">Réinitialiser</button></div>
+      <div id="inboxList" class="list"></div>
+    </section>
+
+    <section class="page" data-page="children">
+      <div class="section-head first"><h3>Enfants</h3><button class="link" data-action="add-child">+ Ajouter</button></div>
+      <div class="list">
+        <article class="child"><div class="avatar">🧑‍🚀</div><div><h4>Hayden</h4><p>6e • ÉcoleDirecte<br>Emploi du temps, devoirs et messages</p></div><span>Collège</span></article>
+        <article class="child"><div class="avatar green">🎨</div><div><h4>Théo</h4><p>Primaire • Cahier papier + infos école<br>Sorties et activités spécifiques</p></div><span>Primaire</span></article>
+      </div>
+      <div class="section-head"><h3>Sources prévues</h3></div>
+      <div class="list">
+        <article class="card"><div class="ico">🏫</div><div><h4>ÉcoleDirecte</h4><p>Capture ou partage vers KidooFlow pour le prototype.</p></div></article>
+        <article class="card"><div class="ico">📚</div><div><h4>Cahier papier</h4><p>Photo → OCR/IA → devoirs proposés.</p></div></article>
+        <article class="card"><div class="ico">⚽️</div><div><h4>Sport & santé</h4><p>Ajout manuel, récurrence et rendez-vous.</p></div></article>
+      </div>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="Navigation">
+    <button class="active" data-nav="today">⌂<span>Aujourd’hui</span></button>
+    <button data-nav="agenda">▦<span>Agenda</span></button>
+    <button class="add" data-nav="add">＋<span>Ajouter</span></button>
+    <button data-nav="inbox">▣<span>Inbox</span></button>
+    <button data-nav="children">☺<span>Enfants</span></button>
+  </nav>
+
+  <input id="photoInput" type="file" accept="image/*" hidden>
+  <div id="toast" class="toast"></div>
+  <script src="app.js" defer></script>
+</body>
+</html>
