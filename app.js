@@ -1,203 +1,139 @@
 (() => {
-  const KEY = 'kidooflow_v05';
-  const LEGACY_KEY = 'kidooflow_v04';
-  const DB_NAME = 'kidooflow_media';
-  const DB_STORE = 'images';
-  const CHILDREN = ['Hayden','Théo'];
-  const MONTHS = {janvier:0,'février':1,fevrier:1,mars:2,avril:3,mai:4,juin:5,juillet:6,'août':7,aout:7,septembre:8,octobre:9,novembre:10,'décembre':11,decembre:11};
-  const WEEKDAYS = {dimanche:0,lundi:1,mardi:2,mercredi:3,jeudi:4,vendredi:5,samedi:6};
-  let pendingAnalysis = null;
-  let deferredPrompt = null;
-  let selectedPhotoData = null;
-  let selectedDate = dateKey(new Date());
+  const KEY='kidooflow_v06', LEGACY_KEY='kidooflow_v05', DB_NAME='kidooflow_media', DB_STORE='images';
+  const MONTHS={janvier:0,fevrier:1,'février':1,mars:2,avril:3,mai:4,juin:5,juillet:6,aout:7,'août':7,septembre:8,octobre:9,novembre:10,decembre:11,'décembre':11};
+  const DAY_NAMES=['Dimanche','Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi'];
+  const SCHOOL_DAYS=[1,2,3,4,5];
+  const SUBJECTS=['Mathématiques','Maths','Français','Anglais','Histoire','Géographie','Histoire-Géographie','SVT','Sciences','Physique-Chimie','Technologie','EPS','Sport','Musique','Arts plastiques','Espagnol','Allemand','Latin','EMC'];
+  let selectedDate=dateKey(new Date()), selectedChild='Hayden', importMode='message', selectedPhotoData=null, pendingAnalysis=null, deferredPrompt=null;
 
-  const demoInbox = [
-    {id:'ed1',source:'ÉcoleDirecte',icon:'🏊',title:'Piscine',text:'Théo • prévoir maillot, bonnet et serviette.',tag:'Événement',date:addDaysKey(3),time:'',action:'Préparer les affaires'},
-    {id:'ed2',source:'ÉcoleDirecte',icon:'💬',title:'Rendez-vous professeur',text:'Hayden • message personnel nécessitant une réponse.',tag:'Action',date:addDaysKey(2),time:'18:00',action:'Répondre / confirmer le rendez-vous'},
-    {id:'book1',source:'Cahier papier',icon:'📚',title:'Devoirs',text:'Théo • lecture, dictée et exercice de maths.',tag:'Devoirs',date:addDaysKey(1),time:'',action:'Faire les devoirs'},
-    {id:'sport1',source:'Manuel',icon:'⚽️',title:'Football',text:'Hayden • entraînement hebdomadaire.',tag:'Sport',date:nextWeekdayKey(3),time:'17:30',action:''}
-  ];
+  function dateKey(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`}
+  function dateFromKey(k){const [y,m,d]=String(k).split('-').map(Number);return new Date(y,m-1,d,12)}
+  function addDaysKey(n,from=new Date()){const d=new Date(from);d.setHours(12,0,0,0);d.setDate(d.getDate()+n);return dateKey(d)}
+  function formatDate(k,opt='long'){if(!k)return 'Sans date';const d=dateFromKey(k);return new Intl.DateTimeFormat('fr-FR',opt==='short'?{day:'2-digit',month:'2-digit'}:{weekday:'long',day:'numeric',month:'long'}).format(d)}
+  function normalize(s){return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase()}
+  function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1):s}
+  function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+  function state(){try{return JSON.parse(localStorage.getItem(KEY))||{}}catch{return{}}}
+  function save(s){localStorage.setItem(KEY,JSON.stringify(s));render()}
+  function ensureState(){let s=state();if(!s.initialized){let old={};try{old=JSON.parse(localStorage.getItem(LEGACY_KEY))||{}}catch{};s={initialized:true,inbox:old.inbox||[],events:old.events||[],homework:[],timetables:{Hayden:[],Théo:[]}};save(s)}else{if(!s.homework)s.homework=[];if(!s.timetables)s.timetables={Hayden:[],Théo:[]};save(s)}}
+  function toast(t){const e=document.getElementById('toast');e.textContent=t;e.classList.add('show');clearTimeout(toast.t);toast.t=setTimeout(()=>e.classList.remove('show'),1900)}
+  function goto(page){document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.dataset.page===page));document.querySelectorAll('.bottom-nav [data-nav]').forEach(b=>b.classList.toggle('active',b.dataset.nav===page));window.scrollTo(0,0);render()}
+  function openModal(id){const e=document.getElementById(id);e.classList.add('show');e.setAttribute('aria-hidden','false')}
+  function closeModal(id){const e=document.getElementById(id);e.classList.remove('show');e.setAttribute('aria-hidden','true')}
 
-  function baseEvents(){
-    return [
-      {id:'base1',icon:'🧪',title:'Contrôle de maths',text:'Hayden • Fractions',tag:'École',date:dateKey(new Date()),time:'14:00'},
-      {id:'base2',icon:'⚽️',title:'Football',text:'Hayden • entraînement',tag:'Sport',date:nextWeekdayKey(3),time:'17:30'},
-      {id:'base3',icon:'🦷',title:'Dentiste',text:'Théo • rendez-vous',tag:'Santé',date:isoForMonthDay(10,6),time:'16:30'}
-    ];
+  function eventOccursOn(ev,k){
+    if(!ev.date)return false;
+    if(ev.repeat!=='weekly')return ev.date===k;
+    if(k<ev.date)return false;
+    if((ev.exceptions||[]).includes(k))return false;
+    const d=dateFromKey(k),start=dateFromKey(ev.date);
+    const wd=ev.repeatWeekday??start.getDay();
+    return d.getDay()===wd;
   }
-
-  function dateKey(d){ return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
-  function dateFromKey(k){ const [y,m,d]=String(k).split('-').map(Number); return new Date(y,m-1,d,12); }
-  function addDaysKey(days, from=new Date()){ const d=new Date(from); d.setHours(12,0,0,0); d.setDate(d.getDate()+days); return dateKey(d); }
-  function nextWeekdayKey(day){ const d=new Date(); d.setHours(12,0,0,0); let delta=(day-d.getDay()+7)%7; if(delta===0) delta=7; d.setDate(d.getDate()+delta); return dateKey(d); }
-  function isoForMonthDay(month,day){ const now=new Date(); let y=now.getFullYear(); let d=new Date(y,month-1,day,12); if(d < new Date(now.getFullYear(),now.getMonth(),now.getDate(),0)) d=new Date(y+1,month-1,day,12); return dateKey(d); }
-  function formatDate(k, long=true){ if(!k) return 'Sans date'; const d=dateFromKey(k); return new Intl.DateTimeFormat('fr-FR', long?{weekday:'long',day:'numeric',month:'long'}:{day:'2-digit',month:'2-digit'}).format(d); }
-  function capitalize(s){ return s ? s.charAt(0).toUpperCase()+s.slice(1) : s; }
-  function escapeHtml(v){ return String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-  function normalize(s){ return String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase(); }
-
-  function state(){ try{return JSON.parse(localStorage.getItem(KEY))||{};}catch{return{};} }
-  function save(next){ localStorage.setItem(KEY,JSON.stringify(next)); render(); }
-  function init(){
-    let s=state();
-    if(!s.initialized){
-      let legacy={}; try{legacy=JSON.parse(localStorage.getItem(LEGACY_KEY))||{};}catch{}
-      const migrated=(legacy.events||[]).map(x=>({...x,id:x.id||`m_${Math.random()}`,date:x.date||dateKey(new Date()),time:x.time||''}));
-      s={initialized:true,inbox:demoInbox,events:migrated}; save(s);
-    } else render();
-  }
-  function showToast(message){ const el=document.getElementById('toast'); el.textContent=message; el.classList.add('show'); clearTimeout(showToast.t); showToast.t=setTimeout(()=>el.classList.remove('show'),1900); }
-  function goto(page){ document.querySelectorAll('.page').forEach(p=>p.classList.toggle('active',p.dataset.page===page)); document.querySelectorAll('.bottom-nav [data-nav]').forEach(b=>b.classList.toggle('active',b.dataset.nav===page)); window.scrollTo(0,0); if(page==='agenda') renderAgenda(); }
-  function openModal(id){ const el=document.getElementById(id); el.classList.add('show'); el.setAttribute('aria-hidden','false'); }
-  function closeModal(id){ const el=document.getElementById(id); el.classList.remove('show'); el.setAttribute('aria-hidden','true'); }
-
+  function allEventsFor(k){const s=state();return (s.events||[]).filter(e=>eventOccursOn(e,k)).sort((a,b)=>(a.time||'99:99').localeCompare(b.time||'99:99'))}
   function eventHtml(x){
     const source=x.sourceImageId?`<button class="source-mini" data-action="view-source" data-image-id="${x.sourceImageId}" data-source-text="${encodeURIComponent(x.sourceText||'')}">📎 Voir la capture source</button>`:'';
-    const when=[x.time, x.action].filter(Boolean).map(escapeHtml).join(' • ');
-    return `<article class="event"><div class="ico">${x.icon||'📌'}</div><div><h4>${escapeHtml(x.title)}</h4><p>${escapeHtml(x.text||'')}${when?`<br><b>${when}</b>`:''}</p></div><span class="tag">${escapeHtml(x.tag||'Info')}</span>${source}</article>`;
+    const recur=x.repeat==='weekly'?`🔁 Chaque ${DAY_NAMES[x.repeatWeekday??dateFromKey(x.date).getDay()].toLowerCase()}`:'';
+    const time=x.time?`${x.time}${x.endTime?`–${x.endTime}`:''}`:'';
+    const extra=[time,recur,x.materials?`🎒 ${x.materials}`:'',x.action?`✅ ${x.action}`:''].filter(Boolean).join(' • ');
+    return `<article class="event"><div class="ico">${x.icon||'📌'}</div><div><h4>${esc(x.title)}</h4><p>${esc(x.text||'')}${extra?`<br><b>${esc(extra)}</b>`:''}</p></div><span class="tag">${esc(x.tag||'Info')}</span>${source}</article>`;
   }
   function inboxHtml(x){
     const source=x.sourceImageId?`<div class="inbox-source"><button data-action="view-source" data-image-id="${x.sourceImageId}" data-source-text="${encodeURIComponent(x.sourceText||'')}">📎 Voir la capture</button></div>`:'';
-    const date=`${x.date?`📅 ${capitalize(formatDate(x.date))}`:'📅 Date à confirmer'}${x.time?` • ${x.time}`:''}`;
-    return `<article class="inbox-card"><div class="top"><span class="source">${x.icon||'🏫'} ${escapeHtml(x.source)}</span><span class="tag">${escapeHtml(x.tag||'École')}</span></div><h4>${escapeHtml(x.title)}</h4><p class="structured-line">${escapeHtml(date)}</p><p>${escapeHtml(x.text||'')}</p>${x.action?`<p class="action-line">✅ ${escapeHtml(x.action)}</p>`:''}${source}<div class="inbox-actions"><button data-action="ignore-inbox" data-id="${x.id}">Ignorer</button><button class="accept" data-action="accept-inbox" data-id="${x.id}">Ajouter ✓</button></div></article>`;
+    const time=x.time?` • ${x.time}${x.endTime?`–${x.endTime}`:''}`:'';
+    const recur=x.repeat==='weekly'?` • 🔁 chaque ${DAY_NAMES[x.repeatWeekday??dateFromKey(x.date).getDay()].toLowerCase()}`:'';
+    return `<article class="inbox-card"><div class="top"><span class="source">${x.icon||'🏫'} ${esc(x.source||'ÉcoleDirecte')}</span><span class="tag">${esc(x.tag||'École')}</span></div><h4>${esc(x.title)}</h4><p class="structured-line">${x.date?`📅 ${esc(cap(formatDate(x.date)))}${time}${recur}`:'📅 Date à confirmer'}</p><p>${esc(x.text||'')}</p>${x.materials?`<p>🎒 ${esc(x.materials)}</p>`:''}${x.action?`<p class="action-line">✅ ${esc(x.action)}</p>`:''}${x.exceptions?.length?`<p>⛔ Sans séance : ${x.exceptions.map(d=>esc(formatDate(d,'short'))).join(', ')}</p>`:''}${source}<div class="inbox-actions"><button data-action="ignore-inbox" data-id="${x.id}">Ignorer</button><button class="accept" data-action="accept-inbox" data-id="${x.id}">Ajouter ✓</button></div></article>`;
   }
-  function allEvents(){ const s=state(); return [...baseEvents(),...(s.events||[])]; }
+
   function render(){
-    const s=state(), inbox=s.inbox||[], events=allEvents(), today=dateKey(new Date());
-    const todayEvents=events.filter(x=>x.date===today);
-    document.getElementById('inboxCount').textContent=inbox.length;
-    document.getElementById('inboxChip').textContent=`${inbox.length} élément${inbox.length===1?'':'s'} Inbox`;
-    document.getElementById('eventCount').textContent=todayEvents.length;
-    document.getElementById('todayList').innerHTML=todayEvents.length?todayEvents.map(eventHtml).join(''):'<div class="empty">Rien de prévu aujourd’hui 🎉</div>';
-    document.getElementById('inboxList').innerHTML=inbox.length?inbox.map(inboxHtml).join(''):'<div class="empty">Inbox vide 🎉</div>';
-    renderAgenda();
+    const s=state(),today=dateKey(new Date()),todayEvents=allEventsFor(today),todayHw=(s.homework||[]).filter(h=>h.date===today&&h.child===selectedChild),tt=(s.timetables?.[selectedChild]||[]).filter(c=>c.day===new Date().getDay());
+    document.getElementById('inboxCount').textContent=(s.inbox||[]).length;document.getElementById('inboxChip').textContent=`${(s.inbox||[]).length} élément${(s.inbox||[]).length===1?'':'s'} Inbox`;document.getElementById('eventCount').textContent=todayEvents.length;document.getElementById('homeworkCount').textContent=todayHw.length;document.getElementById('timetableCount').textContent=tt.length;
+    const priorities=[...todayEvents,...todayHw.map(h=>({icon:'📚',title:h.subject||'Devoir',text:`${h.child} • ${h.task}`,tag:'Devoirs'}))];document.getElementById('todayList').innerHTML=priorities.length?priorities.map(eventHtml).join(''):'<div class="empty">Rien d’urgent aujourd’hui 🎉</div>';
+    document.getElementById('inboxList').innerHTML=(s.inbox||[]).length?(s.inbox||[]).map(inboxHtml).join(''):'<div class="empty">Inbox vide 🎉</div>';
+    renderAgenda();renderSchool();
   }
-  function renderAgenda(){
-    const anchor=dateFromKey(selectedDate); const monday=new Date(anchor); const diff=(anchor.getDay()+6)%7; monday.setDate(anchor.getDate()-diff);
-    const fmtDay=new Intl.DateTimeFormat('fr-FR',{weekday:'short'});
-    document.getElementById('agendaWeek').innerHTML=Array.from({length:7},(_,i)=>{ const d=new Date(monday); d.setDate(monday.getDate()+i); const k=dateKey(d); return `<button class="day ${k===selectedDate?'active':''}" data-date="${k}"><span>${capitalize(fmtDay.format(d).replace('.',''))}</span><b>${d.getDate()}</b></button>`; }).join('');
-    document.getElementById('selectedDateLabel').textContent=capitalize(formatDate(selectedDate));
-    const list=allEvents().filter(x=>x.date===selectedDate).sort((a,b)=>(a.time||'99:99').localeCompare(b.time||'99:99'));
-    document.getElementById('agendaList').innerHTML=list.length?list.map(eventHtml).join(''):'<div class="empty">Aucun événement ce jour-là.</div>';
+  function renderAgenda(){const anchor=dateFromKey(selectedDate),mon=new Date(anchor);mon.setDate(anchor.getDate()-((anchor.getDay()+6)%7));const fmt=new Intl.DateTimeFormat('fr-FR',{weekday:'short'});document.getElementById('agendaWeek').innerHTML=Array.from({length:7},(_,i)=>{const d=new Date(mon);d.setDate(mon.getDate()+i);const k=dateKey(d);return `<button class="day ${k===selectedDate?'active':''}" data-date="${k}"><span>${cap(fmt.format(d).replace('.',''))}</span><b>${d.getDate()}</b></button>`}).join('');document.getElementById('selectedDateLabel').textContent=cap(formatDate(selectedDate));const list=allEventsFor(selectedDate);document.getElementById('agendaList').innerHTML=list.length?list.map(eventHtml).join(''):'<div class="empty">Aucun événement ce jour-là.</div>'}
+  function renderSchool(){
+    document.querySelectorAll('#childSwitch button').forEach(b=>b.classList.toggle('active',b.dataset.child===selectedChild));
+    document.getElementById('timetableTitle').textContent=`${selectedChild} • semaine`;const tt=state().timetables?.[selectedChild]||[];document.getElementById('timetableView').innerHTML=SCHOOL_DAYS.map(day=>{const courses=tt.filter(c=>c.day===day).sort((a,b)=>a.start.localeCompare(b.start));return `<div class="tt-day"><div class="tt-day-title">${DAY_NAMES[day]}</div>${courses.length?courses.map(c=>`<div class="course"><time>${esc(c.start)}–${esc(c.end)}</time><b>${esc(c.subject)}</b></div>`).join(''):'<div class="empty" style="padding:9px">—</div>'}</div>`}).join('');
+    const hw=(state().homework||[]).filter(h=>h.child===selectedChild).sort((a,b)=>(a.date||'9999').localeCompare(b.date||'9999'));document.getElementById('homeworkTitle').textContent=`${selectedChild} • à venir`;document.getElementById('homeworkView').innerHTML=hw.length?hw.slice(0,10).map(h=>`<div class="homework-item"><span class="homework-date">${h.date?cap(formatDate(h.date)):'Date à confirmer'}</span><br><b>${esc(h.subject||'Devoir')}</b><p>${esc(h.task)}</p></div>`).join(''):'<div class="empty">Aucun devoir enregistré.</div>';
   }
-  function acceptInbox(id){
-    const s=state(),x=(s.inbox||[]).find(i=>i.id===id); if(!x)return;
-    if(!x.date){showToast('Confirme d’abord une date');return;}
-    s.inbox=s.inbox.filter(i=>i.id!==id);
-    s.events=[...(s.events||[]),{id:`ev_${Date.now()}`,icon:x.icon,title:x.title,text:x.text,tag:x.tag,date:x.date,time:x.time||'',action:x.action||'',sourceImageId:x.sourceImageId,sourceText:x.sourceText}];
-    save(s); selectedDate=x.date; showToast('Ajouté à l’agenda ✓');
-  }
-  function ignoreInbox(id){ const s=state(); s.inbox=(s.inbox||[]).filter(i=>i.id!==id); save(s); showToast('Élément ignoré'); }
 
-  function extractDates(text){
-    const clean=String(text||'').replace(/\s+/g,' '); const lower=normalize(clean); const now=new Date(); now.setHours(12,0,0,0); const out=[];
-    const add=(date,raw,index,score=0)=>{ if(!date||Number.isNaN(date.getTime()))return; const key=dateKey(date); if(!out.some(x=>x.key===key&&x.index===index))out.push({key,raw,index,score}); };
-    for(const m of clean.matchAll(/\b(\d{1,2})[\/.\-](\d{1,2})(?:[\/.\-](\d{2,4}))?\b/g)){
-      let y=m[3]?Number(m[3]):now.getFullYear(); if(y<100)y+=2000; const d=new Date(y,Number(m[2])-1,Number(m[1]),12); const before=normalize(clean.slice(Math.max(0,m.index-25),m.index)); const score=/(pour|avant|le|date|rendez|sortie|devoir|jusqu)/.test(before)?3:1; add(d,m[0],m.index,score);
+  function acceptInbox(id){const s=state(),x=(s.inbox||[]).find(i=>i.id===id);if(!x)return;if(!x.date){toast('Date à confirmer');return;}s.inbox=s.inbox.filter(i=>i.id!==id);s.events=[...(s.events||[]),{...x,id:`ev_${Date.now()}`}];selectedDate=x.date;save(s);toast('Ajouté à l’agenda ✓')}
+  function ignoreInbox(id){const s=state();s.inbox=(s.inbox||[]).filter(i=>i.id!==id);save(s);toast('Élément ignoré')}
+
+  function cleanLines(text){return String(text||'').split(/\r?\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean)}
+  function parseDatePhrase(raw){const n=normalize(raw),now=new Date();let m=n.match(/(?:(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\s+)?(\d{1,2})\s+(janvier|fevrier|mars|avril|mai|juin|juillet|aout|septembre|octobre|novembre|decembre)(?:\s+(\d{4}))?/);if(m){let y=m[4]?Number(m[4]):now.getFullYear();let d=new Date(y,MONTHS[m[3]],Number(m[2]),12);if(!m[4]&&d<new Date(now.getTime()-45*86400000))d.setFullYear(y+1);return dateKey(d)}m=n.match(/\b(\d{1,2})[\/.\-](\d{1,2})(?:[\/.\-](\d{2,4}))?/);if(m){let y=m[3]?Number(m[3]):now.getFullYear();if(y<100)y+=2000;return dateKey(new Date(y,Number(m[2])-1,Number(m[1]),12))}return''}
+  function schoolMessageParts(text){
+    const lines=cleanLines(text), ui=/boite de reception|boîte de réception|a moi|à moi|ecoledirecte|retour|messagerie/i;
+    let subject='';for(const l of lines.slice(0,8)){if(l.length<=45&&!ui.test(l)&&!/^mme\b|^m\.\b|^monsieur\b|^madame\b/i.test(l)&&!/^lundi|^mardi|^mercredi|^jeudi|^vendredi|^samedi|^dimanche/i.test(l)&&!/^bonjour$|^bonsoir$/i.test(l)){subject=l;break}}
+    let bodyStart=lines.findIndex(l=>/^(bonjour|bonsoir|madame|monsieur)[,!. ]*$/i.test(l));if(bodyStart<0)bodyStart=Math.min(5,lines.length);const body=lines.slice(bodyStart+1).join('\n');return {lines,subject,body:body||lines.join('\n')};
+  }
+  function parseSchoolMessage(text){
+    const {subject,body}=schoolMessageParts(text), n=normalize(body), lines=cleanLines(body);
+    const dateCandidates=[];for(const line of lines){const k=parseDatePhrase(line);if(!k)continue;const ln=normalize(line);let score=1;if(/a partir de|à partir de|des ce|dès ce|dès le|a compter de|à compter de/.test(ln))score+=7;if(/n.aura pas lieu|ne aura pas lieu|pas lieu|annul|exception|par contre/.test(ln))score-=8;if(/rendez|sortie|seance|séance|devoir|pour le/.test(ln))score+=2;dateCandidates.push({key:k,line,score,exception:score<0})}
+    const exceptions=[...new Set(dateCandidates.filter(x=>x.exception).map(x=>x.key))];const main=dateCandidates.filter(x=>!x.exception).sort((a,b)=>b.score-a.score)[0]?.key||'';
+    let start='',end='';const range=body.match(/(?:de\s*)?([01]?\d|2[0-3])\s*[h:]\s*([0-5]\d)\s*(?:a|à|-|–)\s*([01]?\d|2[0-3])\s*[h:]\s*([0-5]\d)/i);if(range){start=`${String(Number(range[1])).padStart(2,'0')}:${range[2]}`;end=`${String(Number(range[3])).padStart(2,'0')}:${range[4]}`}
+    let repeat='';let repeatWeekday=null;for(let d=1;d<=5;d++){const day=normalize(DAY_NAMES[d]);if(new RegExp(`(tous les|chaque|auront lieu le|aurons .* le|le) ${day}|${day} matin|${day} apres-midi`).test(n)){repeat='weekly';repeatWeekday=d;break}}
+    let category='Message',icon='💬';if(/rugby|piscine|eps|cross|sport|gymnase|stade/.test(n)){category='Sport scolaire';icon='🏉'}else if(/sortie|visite|voyage|spectacle|excursion/.test(n)){category='Événement';icon='🚌'}else if(/rendez|reunion|rencontre|entretien/.test(n)){category='Action';icon='💬'}
+    let title=subject;if(!title||/bonjour|bonsoir/i.test(title)){if(/rugby/.test(n))title='Rugby';else if(/piscine/.test(n))title='Piscine';else title=category==='Sport scolaire'?'Sport scolaire':category==='Événement'?'Événement scolaire':'Message ÉcoleDirecte'}title=cap(title.trim());
+    const materials=[];const patterns=[['tenue de sport','tenue de sport'],['baskets','baskets'],['gourde','gourde'],['maillot','maillot'],['bonnet','bonnet'],['serviette','serviette'],['pique-nique','pique-nique'],['pique nique','pique-nique'],['classeur','classeur'],['cahier','cahier']];for(const [needle,label] of patterns)if(n.includes(needle)&&!materials.includes(label))materials.push(label);
+    const actions=[];if(/parent.*accompagn|accompagn.*parent|besoin d.un parent/.test(n))actions.push('Répondre si disponible pour accompagner');if(/signer|signature|autorisation/.test(n))actions.push('Signer le document');if(/merci de.*savoir|merci de.*repondre|confirmer/.test(n)&&!actions.some(a=>a.startsWith('Répondre')))actions.push('Répondre / confirmer');
+    return {title,category,icon,date:main,time:start,endTime:end,repeat,repeatWeekday,exceptions,materials:materials.join(', '),action:actions.join(' • '),body,dateCandidates};
+  }
+  function parseGeneric(text){const p=parseSchoolMessage(text);if(p.date||p.title!=='Message ÉcoleDirecte')return p;const n=normalize(text),date=parseDatePhrase(text);let title='Nouvelle information',category='Famille',icon='📝';if(/dentiste|medecin/.test(n)){title=/dentiste/.test(n)?'Dentiste':'Médecin';category='Santé';icon='🦷'}else if(/football|entrainement|sport/.test(n)){title='Activité sportive';category='Sport';icon='⚽️'}return {...p,title,category,icon,date}}
+
+  function parseHomework(text,child){
+    const lines=cleanLines(text),n=normalize(text),fallbackDate=parseDatePhrase(text);const rows=[];let currentSubject='';let buffer=[];
+    const flush=()=>{const task=buffer.join(' ').trim();if(task&&currentSubject)rows.push({subject:currentSubject,task,date:parseDatePhrase(task)||fallbackDate||''});buffer=[]};
+    for(const line of lines){const subj=SUBJECTS.find(s=>normalize(line)===normalize(s)||normalize(line).startsWith(normalize(s)+':'));if(subj){flush();currentSubject=subj;const rest=line.includes(':')?line.split(':').slice(1).join(':').trim():'';if(rest)buffer.push(rest);continue}if(currentSubject)buffer.push(line)}flush();
+    if(!rows.length){let subject=SUBJECTS.find(s=>n.includes(normalize(s)))||'Devoir';let task=lines.filter(l=>!/ecoledirecte|cahier de texte|travail a faire|travail à faire/i.test(l)).slice(-5).join(' ').slice(0,260);rows.push({subject,task:task||'Travail à vérifier',date:fallbackDate||''})}
+    return rows.map(r=>({...r,child}));
+  }
+  function parseTimetable(text){
+    const lines=cleanLines(text);let currentDay=null;const rows=[];
+    for(let i=0;i<lines.length;i++){
+      const ln=lines[i],nn=normalize(ln);for(let d=1;d<=5;d++)if(nn===normalize(DAY_NAMES[d])||nn.startsWith(normalize(DAY_NAMES[d])+' '))currentDay=d;
+      const m=ln.match(/\b([01]?\d|2[0-3])\s*[h:]\s*([0-5]\d)\s*(?:-|–|a|à)\s*([01]?\d|2[0-3])\s*[h:]\s*([0-5]\d)\b/i);if(!m||!currentDay)continue;
+      const start=`${String(Number(m[1])).padStart(2,'0')}:${m[2]}`,end=`${String(Number(m[3])).padStart(2,'0')}:${m[4]}`;let subject=ln.replace(m[0],'').replace(/[-–|]/g,' ').trim();if(!subject&&lines[i+1])subject=lines[i+1];subject=SUBJECTS.find(s=>normalize(subject).includes(normalize(s)))||subject||'Cours';rows.push({day:currentDay,start,end,subject:subject.slice(0,70)})
     }
-    const monthNames='janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre';
-    const rx=new RegExp(`\\b(?:(lundi|mardi|mercredi|jeudi|vendredi|samedi|dimanche)\\s+)?(\\d{1,2})\\s+(${monthNames})(?:\\s+(\\d{4}))?\\b`,'gi');
-    for(const m of clean.matchAll(rx)){ const y=m[4]?Number(m[4]):now.getFullYear(); let d=new Date(y,MONTHS[normalize(m[3])],Number(m[2]),12); if(!m[4]&&d<new Date(now.getTime()-86400000*30)) d=new Date(y+1,MONTHS[normalize(m[3])],Number(m[2]),12); const before=normalize(clean.slice(Math.max(0,m.index-30),m.index)); const score=/(pour|avant|le|date|rendez|sortie|devoir|jusqu)/.test(before)?4:2; add(d,m[0],m.index,score); }
-    if(/apres[- ]?demain/.test(lower)){ const d=new Date(now);d.setDate(d.getDate()+2);add(d,'après-demain',clean.length,5); }
-    else if(/\bdemain\b/.test(lower)){ const d=new Date(now);d.setDate(d.getDate()+1);add(d,'demain',clean.length,5); }
-    else if(/aujourd['’]?hui/.test(lower)) add(now,"aujourd'hui",clean.length,5);
-    for(const [name,wd] of Object.entries(WEEKDAYS)){
-      const idx=lower.search(new RegExp(`\\b${name}\\b`)); if(idx<0)continue;
-      if(out.some(x=>Math.abs(x.index-idx)<25))continue;
-      let delta=(wd-now.getDay()+7)%7; if(delta===0&&/prochain/.test(lower.slice(Math.max(0,idx-15),idx+20)))delta=7; const d=new Date(now);d.setDate(d.getDate()+delta); const before=lower.slice(Math.max(0,idx-25),idx); add(d,name,idx,/(pour|avant|le|rendez|sortie|devoir)/.test(before)?3:1);
-    }
-    return out.sort((a,b)=>b.score-a.score || b.index-a.index);
-  }
-  function extractTimes(text){ const out=[]; for(const m of String(text||'').matchAll(/\b([01]?\d|2[0-3])\s*(?:h|:|H)\s*([0-5]\d)?\b/g)){ out.push({value:`${String(Number(m[1])).padStart(2,'0')}:${m[2]||'00'}`,index:m.index}); } return out; }
-  function extractObject(text,category){
-    const lines=String(text||'').split(/\r?\n/).map(x=>x.replace(/\s+/g,' ').trim()).filter(Boolean);
-    const labelled=lines.find(l=>/^(objet|sujet|titre|intitul[ée]|activité|activite)\s*[:\-]/i.test(l));
-    if(labelled) return labelled.replace(/^[^:\-]+[:\-]\s*/,'').slice(0,90);
-    const matter=String(text||'').match(/(?:mati[eè]re|discipline)\s*[:\-]\s*([^\n]{2,45})/i)?.[1]?.trim();
-    if(category==='Devoirs'&&matter)return `Devoirs • ${matter}`;
-    const ignore=/ecoledirecte|école directe|accueil|messagerie|notification|menu|retour|déconnexion|deconnexion|publié|publie|envoyé|envoye|classe|élève|eleve/i;
-    const candidate=lines.find(l=>l.length>=5&&l.length<=100&&!ignore.test(l)&&!/^\d{1,2}[\/.]/.test(l)&&!/^\d{1,2}:\d{2}/.test(l));
-    if(candidate) return candidate.replace(/^[•\-–]\s*/,'').slice(0,90);
-    return category==='Devoirs'?'Devoirs':category==='Événement'?'Événement scolaire':category==='Action'?'Action demandée':category==='Message'?'Message ÉcoleDirecte':'Information ÉcoleDirecte';
-  }
-  function classifyText(text){
-    const raw=String(text||''); const clean=raw.replace(/[ \t]+/g,' ').replace(/\n{3,}/g,'\n\n').trim(); const l=normalize(clean);
-    const child=l.includes('theo')?'Théo':l.includes('hayden')?'Hayden':'À confirmer';
-    let icon='🏫', category='École';
-    if(/travail a faire|devoir|exercice|lecon|dictee|cahier de texte|a faire pour|pour le .* apprendre|apprendre/.test(l)){icon='📚';category='Devoirs';}
-    else if(/rendez[- ]?vous|rdv|rencontre|reunion|entretien/.test(l)){icon='💬';category='Action';}
-    else if(/sortie|piscine|voyage|visite|excursion|spectacle|cross|activite scolaire/.test(l)){icon='🚌';category='Événement';}
-    else if(/absence|retard|sanction|vie scolaire|punition|dispense/.test(l)){icon='🏫';category='Vie scolaire';}
-    else if(/message|professeur|enseignant|enseignante|madame|monsieur|direction/.test(l)){icon='💬';category='Message';}
-    const dates=extractDates(clean), times=extractTimes(clean); const date=dates[0]?.key||''; const time=times[0]?.value||'';
-    const actions=[];
-    if(/signer|signature|autorisation/.test(l))actions.push('Signer le document');
-    if(/apporter|prevoir|venir avec|amener|ne pas oublier/.test(l))actions.push('Préparer le matériel demandé');
-    if(/repondre|reponse|merci de confirmer|confirmer votre presence|confirmer/.test(l))actions.push('Répondre / confirmer');
-    if(/payer|paiement|reglement|cotisation/.test(l))actions.push('Effectuer le paiement');
-    if(/rendre|a rendre|remettre/.test(l))actions.push('Rendre le travail / document');
-    if(category==='Devoirs'&&!actions.length)actions.push('Faire le travail demandé');
-    const title=extractObject(clean,category);
-    const confidence=[date?1:0,title?1:0,category!=='École'?1:0,child!=='À confirmer'?1:0].reduce((a,b)=>a+b,0);
-    return {clean,child,icon,title,category,date,time,actions,dates,times,confidence};
+    return rows;
   }
 
-  function analyze(){
-    const input=document.getElementById('inputText'),text=input.value.trim(); if(!text){showToast('Ajoute une information');return;}
-    const m=classifyText(text); pendingAnalysis={id:`ev_${Date.now()}`,icon:m.icon,title:m.title,text:`${m.child} • ${m.clean.slice(0,220)}`,tag:m.category,date:m.date||dateKey(new Date()),time:m.time,action:m.actions.join(' • ')};
-    document.getElementById('analysisBody').innerHTML=`<ul><li>Enfant : <b>${escapeHtml(m.child)}</b></li><li>Objet : <b>${escapeHtml(m.title)}</b></li><li>Date : <b>${escapeHtml(m.date?capitalize(formatDate(m.date)):'à confirmer')}</b></li><li>Catégorie : <b>${escapeHtml(m.category)}</b></li></ul>`;
-    document.getElementById('analysis').classList.remove('hidden');
-  }
-  function saveAnalysis(){ if(!pendingAnalysis)return; const s=state(); s.events=[...(s.events||[]),pendingAnalysis]; selectedDate=pendingAnalysis.date; save(s); pendingAnalysis=null; document.getElementById('inputText').value=''; document.getElementById('analysis').classList.add('hidden'); showToast('Ajouté à l’agenda ✓'); goto('agenda'); }
+  function setImportMode(mode){importMode=mode;const cfg={message:['Message ÉcoleDirecte','🏫','Choisis une capture de message','KidooFlow distingue la date du message de la date de l’événement.'],homework:['Importer des devoirs','📚','Choisis une capture de devoirs','ÉcoleDirecte ou cahier papier.'],timetable:['Importer un emploi du temps','🗓️','Choisis une capture de l’emploi du temps','Tu pourras corriger chaque cours avant validation.']}[mode];document.getElementById('importTitle').textContent=cfg[0];document.getElementById('importEmoji').textContent=cfg[1];document.getElementById('importEmptyTitle').textContent=cfg[2];document.getElementById('importEmptyHint').textContent=cfg[3];resetImport();openModal('importModal')}
+  function resetImport(){selectedPhotoData=null;document.getElementById('photoInput').value='';document.getElementById('photoEmpty').classList.remove('hidden');document.getElementById('photoWorkspace').classList.add('hidden');['messageResult','homeworkResult','timetableResult','ocrProgress'].forEach(id=>document.getElementById(id).classList.add('hidden'))}
+  function openDb(){return new Promise((res,rej)=>{const r=indexedDB.open(DB_NAME,1);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains(DB_STORE))r.result.createObjectStore(DB_STORE)};r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+  async function putImage(id,data){const db=await openDb();return new Promise((res,rej)=>{const tx=db.transaction(DB_STORE,'readwrite');tx.objectStore(DB_STORE).put(data,id);tx.oncomplete=res;tx.onerror=()=>rej(tx.error)})}
+  async function getImage(id){const db=await openDb();return new Promise((res,rej)=>{const tx=db.transaction(DB_STORE,'readonly'),r=tx.objectStore(DB_STORE).get(id);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+  function compressImage(file){return new Promise((res,rej)=>{const img=new Image(),url=URL.createObjectURL(file);img.onload=()=>{const max=1800,scale=Math.min(1,max/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=Math.round(img.width*scale);c.height=Math.round(img.height*scale);c.getContext('2d').drawImage(img,0,0,c.width,c.height);URL.revokeObjectURL(url);res(c.toDataURL('image/jpeg',.86))};img.onerror=()=>{URL.revokeObjectURL(url);rej()};img.src=url})}
+  async function selectPhoto(file){if(!file)return;toast('Préparation…');try{selectedPhotoData=await compressImage(file);document.getElementById('photoPreview').src=selectedPhotoData;document.getElementById('photoName').textContent=file.name||'capture.jpg';document.getElementById('photoEmpty').classList.add('hidden');document.getElementById('photoWorkspace').classList.remove('hidden');toast('Capture prête ✓')}catch{toast('Image illisible')}}
+  function progress(v,t){document.getElementById('ocrProgressBar').style.width=`${Math.round(v*100)}%`;document.getElementById('ocrProgressText').textContent=t}
+  async function runOcr(){if(!selectedPhotoData){toast('Choisis une image');return}const b=document.getElementById('ocrButton');b.disabled=true;b.textContent='Lecture en cours…';document.getElementById('ocrProgress').classList.remove('hidden');progress(.02,'Chargement OCR…');try{if(!window.Tesseract)throw 0;const r=await Tesseract.recognize(selectedPhotoData,'fra',{logger:m=>{if(m.progress!=null)progress(m.progress,m.status==='recognizing text'?'Lecture du texte…':'Préparation OCR…')}});const text=(r.data.text||'').trim();if(!text)throw 0;fillImportResult(text);toast('Analyse terminée ✓')}catch{fillImportResult('');toast('OCR incomplet : corrige les champs manuellement')}finally{b.disabled=false;b.textContent='🔎 Relire et analyser';progress(1,'Terminé')}}
+  function fillImportResult(text){['messageResult','homeworkResult','timetableResult'].forEach(id=>document.getElementById(id).classList.add('hidden'));if(importMode==='message'){const p=parseSchoolMessage(text);document.getElementById('ocrText').value=text;document.getElementById('msgTitle').value=p.title;document.getElementById('msgCategory').value=p.category;document.getElementById('msgDate').value=p.date;document.getElementById('msgStart').value=p.time;document.getElementById('msgEnd').value=p.endTime;document.getElementById('msgRepeat').value=p.repeat;document.getElementById('msgMaterials').value=p.materials;document.getElementById('msgAction').value=p.action;document.getElementById('msgExceptions').value=p.exceptions.join(', ');const bits=[p.date?`📅 Événement : ${cap(formatDate(p.date))}`:'📅 Date à confirmer',p.time?`🕒 ${p.time}${p.endTime?`–${p.endTime}`:''}`:'',p.repeat==='weekly'?`🔁 Chaque ${DAY_NAMES[p.repeatWeekday].toLowerCase()}`:'',p.exceptions.length?`⛔ Exception : ${p.exceptions.map(d=>formatDate(d,'short')).join(', ')}`:''].filter(Boolean);document.getElementById('messageDetected').innerHTML=bits.map(esc).join('<br>');document.getElementById('messageResult').classList.remove('hidden')}else if(importMode==='homework'){document.getElementById('homeworkOcrText').value=text;renderHomeworkRows(parseHomework(text,selectedChild));document.getElementById('hwChild').value=selectedChild;document.getElementById('homeworkResult').classList.remove('hidden')}else{document.getElementById('timetableOcrText').value=text;document.getElementById('ttChild').value=selectedChild;renderCourseRows(parseTimetable(text));document.getElementById('timetableResult').classList.remove('hidden')}}
 
-  function openDb(){ return new Promise((resolve,reject)=>{const req=indexedDB.open(DB_NAME,1);req.onupgradeneeded=()=>{if(!req.result.objectStoreNames.contains(DB_STORE))req.result.createObjectStore(DB_STORE);};req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);}); }
-  async function putImage(id,data){const db=await openDb();return new Promise((resolve,reject)=>{const tx=db.transaction(DB_STORE,'readwrite');tx.objectStore(DB_STORE).put(data,id);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});}
-  async function getImage(id){const db=await openDb();return new Promise((resolve,reject)=>{const tx=db.transaction(DB_STORE,'readonly');const req=tx.objectStore(DB_STORE).get(id);req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);});}
-  function compressImage(file){return new Promise((resolve,reject)=>{const img=new Image(),url=URL.createObjectURL(file);img.onload=()=>{const max=1800,scale=Math.min(1,max/Math.max(img.width,img.height)),canvas=document.createElement('canvas');canvas.width=Math.round(img.width*scale);canvas.height=Math.round(img.height*scale);canvas.getContext('2d').drawImage(img,0,0,canvas.width,canvas.height);URL.revokeObjectURL(url);resolve(canvas.toDataURL('image/jpeg',.84));};img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error('Image illisible'));};img.src=url;});}
-  function resetPhotoUi(){selectedPhotoData=null;document.getElementById('photoInput').value='';document.getElementById('photoEmpty').classList.remove('hidden');document.getElementById('photoWorkspace').classList.add('hidden');document.getElementById('ocrResult').classList.add('hidden');document.getElementById('ocrProgress').classList.add('hidden');}
-  async function selectPhoto(file){if(!file)return;showToast('Préparation de la capture…');try{selectedPhotoData=await compressImage(file);document.getElementById('photoPreview').src=selectedPhotoData;document.getElementById('photoName').textContent=file.name||'capture.jpg';document.getElementById('photoEmpty').classList.add('hidden');document.getElementById('photoWorkspace').classList.remove('hidden');document.getElementById('ocrResult').classList.add('hidden');showToast('Capture prête ✓');}catch{showToast('Impossible de lire cette image');}}
-  function setProgress(value,label){document.getElementById('ocrProgressBar').style.width=`${Math.round(value*100)}%`;document.getElementById('ocrProgressText').textContent=label;}
-  async function runOcr(){
-    if(!selectedPhotoData){showToast('Choisis une image');return;} const btn=document.getElementById('ocrButton');btn.disabled=true;btn.textContent='Lecture en cours…';document.getElementById('ocrProgress').classList.remove('hidden');setProgress(.03,'Chargement OCR…');
-    try{if(!window.Tesseract)throw new Error();const result=await Tesseract.recognize(selectedPhotoData,'fra',{logger:m=>{if(m.progress!=null)setProgress(m.progress,m.status==='recognizing text'?'Lecture du texte…':'Préparation OCR…');}});const text=(result.data.text||'').trim();if(!text)throw new Error();fillOcrResult(text);showToast('Capture lue et structurée ✓');}
-    catch{fillOcrResult('');showToast('OCR incomplet : corrige le texte puis relance l’analyse');}
-    finally{btn.disabled=false;btn.textContent='🔎 Relire la capture';setProgress(1,'Analyse terminée');}
-  }
-  function fillOcrResult(text, preserveChild=false){
-    const m=classifyText(text); document.getElementById('ocrText').value=text;
-    if(!preserveChild) document.getElementById('ocrChild').value=CHILDREN.includes(m.child)?m.child:'À confirmer';
-    document.getElementById('ocrCategory').value=['École','Devoirs','Événement','Message','Vie scolaire','Action'].includes(m.category)?m.category:'École';
-    document.getElementById('ocrTitle').value=m.title; document.getElementById('ocrDate').value=m.date; document.getElementById('ocrTime').value=m.time; document.getElementById('ocrAction').value=m.actions.join(' • ');
-    const dateCandidates=m.dates.slice(0,3).map(x=>capitalize(formatDate(x.key,false))).join(', ');
-    const bits=[`🎯 Objet : ${m.title}`,m.date?`📅 Date retenue : ${capitalize(formatDate(m.date))}`:'📅 Date à confirmer',m.time?`🕒 Heure : ${m.time}`:'',dateCandidates&&m.dates.length>1?`🔎 Autres dates vues : ${dateCandidates}`:'',m.actions.length?`✅ Action : ${m.actions.join(' • ')}`:''].filter(Boolean);
-    document.getElementById('ocrDetected').innerHTML=bits.map(escapeHtml).join('<br>'); document.getElementById('ocrResult').classList.remove('hidden');
-  }
-  async function sendPhotoInbox(){
-    if(!selectedPhotoData){showToast('Aucune capture');return;}
-    const raw=document.getElementById('ocrText').value.trim(),child=document.getElementById('ocrChild').value,category=document.getElementById('ocrCategory').value,title=document.getElementById('ocrTitle').value.trim()||'Information ÉcoleDirecte',date=document.getElementById('ocrDate').value,time=document.getElementById('ocrTime').value,action=document.getElementById('ocrAction').value.trim();
-    if(!date){showToast('Confirme une date avant l’Inbox');document.getElementById('ocrDate').focus();return;}
-    const imageId=`img_${Date.now()}`;try{await putImage(imageId,selectedPhotoData);}catch{showToast('Stockage local impossible');return;}
-    const m=classifyText(raw); const item={id:`in_${Date.now()}`,source:'ÉcoleDirecte • capture',icon:m.icon,title,text:`${child} • ${raw.slice(0,240)}`,tag:category,date,time,action,sourceImageId:imageId,sourceText:raw};
-    const s=state();s.inbox=[item,...(s.inbox||[])];save(s);closeModal('photoModal');resetPhotoUi();showToast('Capture structurée dans l’Inbox ✓');goto('inbox');
-  }
-  async function viewSource(imageId,sourceText){try{const data=await getImage(imageId);if(!data){showToast('Capture introuvable sur cet appareil');return;}document.getElementById('sourceImage').src=data;document.getElementById('sourceText').textContent=sourceText||'';openModal('sourceModal');}catch{showToast('Impossible d’ouvrir la capture');}}
+  function homeworkRowHtml(r,i){return `<div class="edit-row" data-hw-row="${i}"><button class="remove-row" data-action="remove-homework-row" data-index="${i}">Supprimer</button><label>Matière<input data-field="subject" value="${esc(r.subject||'')}"></label><label>Travail<input data-field="task" value="${esc(r.task||'')}"></label><label>À faire pour<input data-field="date" type="date" value="${esc(r.date||'')}"></label></div>`}
+  function renderHomeworkRows(rows){const e=document.getElementById('homeworkRows');e.dataset.rows=JSON.stringify(rows);e.innerHTML=rows.length?rows.map(homeworkRowHtml).join(''):'<div class="empty">Aucun devoir détecté. Ajoute une ligne.</div>'}
+  function collectHomeworkRows(){return [...document.querySelectorAll('[data-hw-row]')].map(row=>({subject:row.querySelector('[data-field="subject"]').value.trim(),task:row.querySelector('[data-field="task"]').value.trim(),date:row.querySelector('[data-field="date"]').value})).filter(r=>r.subject||r.task)}
+  function courseRowHtml(r,i){return `<div class="edit-row" data-course-row="${i}"><button class="remove-row" data-action="remove-course-row" data-index="${i}">Supprimer</button><div class="edit-row-grid"><label>Jour<select data-field="day">${SCHOOL_DAYS.map(d=>`<option value="${d}" ${Number(r.day)===d?'selected':''}>${DAY_NAMES[d]}</option>`).join('')}</select></label><label>Matière<input data-field="subject" value="${esc(r.subject||'Cours')}"></label><label>Début<input data-field="start" type="time" value="${esc(r.start||'08:00')}"></label><label>Fin<input data-field="end" type="time" value="${esc(r.end||'09:00')}"></label></div></div>`}
+  function renderCourseRows(rows){const e=document.getElementById('courseRows');e.innerHTML=rows.length?rows.map(courseRowHtml).join(''):'<div class="empty">Aucun cours détecté. Ajoute les lignes nécessaires.</div>'}
+  function collectCourseRows(){return [...document.querySelectorAll('[data-course-row]')].map(row=>({day:Number(row.querySelector('[data-field="day"]').value),subject:row.querySelector('[data-field="subject"]').value.trim(),start:row.querySelector('[data-field="start"]').value,end:row.querySelector('[data-field="end"]').value})).filter(r=>r.subject)}
+
+  async function saveMessageInbox(){const date=document.getElementById('msgDate').value;if(!date){toast('Confirme la date de début');return}const raw=document.getElementById('ocrText').value.trim(),imageId=`img_${Date.now()}`;try{await putImage(imageId,selectedPhotoData)}catch{}const repeat=document.getElementById('msgRepeat').value,exceptions=document.getElementById('msgExceptions').value.split(/[,; ]+/).filter(x=>/^\d{4}-\d{2}-\d{2}$/.test(x));const child=document.getElementById('msgChild').value;const item={id:`in_${Date.now()}`,source:'ÉcoleDirecte • message',icon:document.getElementById('msgCategory').value==='Sport scolaire'?'🏉':'🏫',title:document.getElementById('msgTitle').value.trim()||'Information scolaire',text:`${child} • message ÉcoleDirecte`,tag:document.getElementById('msgCategory').value,date,time:document.getElementById('msgStart').value,endTime:document.getElementById('msgEnd').value,repeat,repeatWeekday:repeat==='weekly'?dateFromKey(date).getDay():null,materials:document.getElementById('msgMaterials').value.trim(),action:document.getElementById('msgAction').value.trim(),exceptions,sourceImageId:imageId,sourceText:raw};const s=state();s.inbox=[item,...(s.inbox||[])];save(s);closeModal('importModal');toast('Message structuré dans l’Inbox ✓');goto('inbox')}
+  function saveHomework(){const rows=collectHomeworkRows(),child=document.getElementById('hwChild').value;if(!rows.length){toast('Ajoute au moins un devoir');return}const s=state();const added=rows.map((r,i)=>({id:`hw_${Date.now()}_${i}`,child,subject:r.subject||'Devoir',task:r.task||'Travail à faire',date:r.date,source:document.getElementById('hwSource').value}));s.homework=[...(s.homework||[]),...added];for(const h of added.filter(x=>x.date))s.events.push({id:`ev_${h.id}`,icon:'📚',title:h.subject,text:`${h.child} • ${h.task}`,tag:'Devoirs',date:h.date,time:'',action:'Faire le devoir'});save(s);closeModal('importModal');selectedChild=child;goto('children');toast(`${added.length} devoir${added.length>1?'s':''} enregistré${added.length>1?'s':''} ✓`)}
+  function saveTimetable(){const rows=collectCourseRows(),child=document.getElementById('ttChild').value;if(!rows.length){toast('Ajoute au moins un cours');return}const s=state();s.timetables[child]=rows;save(s);closeModal('importModal');selectedChild=child;goto('children');toast('Emploi du temps enregistré ✓')}
+  async function viewSource(id,text){try{const img=await getImage(id);if(!img){toast('Capture introuvable');return}document.getElementById('sourceImage').src=img;document.getElementById('sourceText').textContent=text||'';openModal('sourceModal')}catch{toast('Impossible d’ouvrir la capture')}}
+
+  function analyzeText(){const text=document.getElementById('inputText').value.trim();if(!text){toast('Ajoute une information');return}const p=parseGeneric(text),child=/theo/.test(normalize(text))?'Théo':/hayden/.test(normalize(text))?'Hayden':'À confirmer';pendingAnalysis={id:`ev_${Date.now()}`,icon:p.icon,title:p.title,text:`${child} • ${text.slice(0,220)}`,tag:p.category,date:p.date||dateKey(new Date()),time:p.time||'',endTime:p.endTime||'',repeat:p.repeat||'',repeatWeekday:p.repeatWeekday,exceptions:p.exceptions||[],materials:p.materials||'',action:p.action||''};document.getElementById('analysisBody').innerHTML=`<ul><li>Objet : <b>${esc(p.title)}</b></li><li>Date : <b>${esc(p.date?cap(formatDate(p.date)):'à confirmer')}</b></li><li>Catégorie : <b>${esc(p.category)}</b></li></ul>`;document.getElementById('analysis').classList.remove('hidden')}
+  function saveAnalysis(){if(!pendingAnalysis)return;const s=state();s.events.push(pendingAnalysis);selectedDate=pendingAnalysis.date;save(s);pendingAnalysis=null;document.getElementById('inputText').value='';document.getElementById('analysis').classList.add('hidden');goto('agenda');toast('Ajouté ✓')}
 
   document.addEventListener('click',e=>{
-    const day=e.target.closest('.day[data-date]'); if(day){selectedDate=day.dataset.date;renderAgenda();return;}
-    const button=e.target.closest('button');if(!button)return;
-    if(button.dataset.nav){goto(button.dataset.nav);return;}
-    const a=button.dataset.action,id=button.dataset.id;
-    if(a==='accept-inbox')return acceptInbox(id); if(a==='ignore-inbox')return ignoreInbox(id); if(a==='analyze')return analyze(); if(a==='save-analysis')return saveAnalysis();
-    if(a==='reset'){save({initialized:true,inbox:demoInbox,events:[]});showToast('Démo réinitialisée');return;}
-    if(a==='today'){selectedDate=dateKey(new Date());renderAgenda();return;}
-    if(a==='prev-week'){const d=dateFromKey(selectedDate);d.setDate(d.getDate()-7);selectedDate=dateKey(d);renderAgenda();return;}
-    if(a==='next-week'){const d=dateFromKey(selectedDate);d.setDate(d.getDate()+7);selectedDate=dateKey(d);renderAgenda();return;}
-    if(a==='add-child'){showToast('Ajout enfant prévu ensuite');return;}
-    if(a==='photo'){resetPhotoUi();openModal('photoModal');return;} if(a==='choose-photo'){document.getElementById('photoInput').click();return;} if(a==='close-photo'){closeModal('photoModal');return;} if(a==='run-ocr')return runOcr(); if(a==='reanalyze-ocr'){fillOcrResult(document.getElementById('ocrText').value,true);showToast('Analyse mise à jour');return;} if(a==='send-photo-inbox')return sendPhotoInbox(); if(a==='view-source')return viewSource(button.dataset.imageId,decodeURIComponent(button.dataset.sourceText||'')); if(a==='close-source'){closeModal('sourceModal');return;}
-    if(a==='homework'){document.getElementById('inputText').value='Théo : lecture page 18, dictée vendredi, exercices 4 et 5 page 36.';return;} if(a==='voice'){document.getElementById('inputText').value='Dentiste Théo mardi 6 octobre à 16h30.';showToast('Exemple de dictée chargé');return;} if(a==='appointment'){document.getElementById('inputText').value='Hayden entraînement football mercredi à 17h30 toutes les semaines.';return;}
-    if(a==='install'){if(deferredPrompt){deferredPrompt.prompt();deferredPrompt.userChoice.finally(()=>deferredPrompt=null);}else showToast('iPhone : Partager → Sur l’écran d’accueil');}
+    const day=e.target.closest('.day[data-date]');if(day){selectedDate=day.dataset.date;renderAgenda();return}
+    const child=e.target.closest('#childSwitch button[data-child]');if(child){selectedChild=child.dataset.child;renderSchool();return}
+    const b=e.target.closest('button');if(!b)return;if(b.dataset.nav){goto(b.dataset.nav);return}const a=b.dataset.action,id=b.dataset.id;
+    if(a==='accept-inbox')return acceptInbox(id);if(a==='ignore-inbox')return ignoreInbox(id);if(a==='today'){selectedDate=dateKey(new Date());renderAgenda();return}if(a==='prev-week'){const d=dateFromKey(selectedDate);d.setDate(d.getDate()-7);selectedDate=dateKey(d);renderAgenda();return}if(a==='next-week'){const d=dateFromKey(selectedDate);d.setDate(d.getDate()+7);selectedDate=dateKey(d);renderAgenda();return}
+    if(a==='import-message')return setImportMode('message');if(a==='import-homework')return setImportMode('homework');if(a==='import-timetable')return setImportMode('timetable');if(a==='choose-photo'){document.getElementById('photoInput').click();return}if(a==='close-import'){closeModal('importModal');return}if(a==='run-ocr')return runOcr();if(a==='reanalyze-message'){fillImportResult(document.getElementById('ocrText').value);toast('Analyse mise à jour');return}if(a==='send-message-inbox')return saveMessageInbox();if(a==='save-homework')return saveHomework();if(a==='save-timetable')return saveTimetable();if(a==='view-source')return viewSource(b.dataset.imageId,decodeURIComponent(b.dataset.sourceText||''));if(a==='close-source'){closeModal('sourceModal');return}
+    if(a==='add-homework-row'){const rows=collectHomeworkRows();rows.push({subject:'',task:'',date:''});renderHomeworkRows(rows);return}if(a==='remove-homework-row'){const rows=collectHomeworkRows();rows.splice(Number(b.dataset.index),1);renderHomeworkRows(rows);return}if(a==='add-course-row'){const rows=collectCourseRows();rows.push({day:1,subject:'Cours',start:'08:00',end:'09:00'});renderCourseRows(rows);return}if(a==='remove-course-row'){const rows=collectCourseRows();rows.splice(Number(b.dataset.index),1);renderCourseRows(rows);return}
+    if(a==='analyze')return analyzeText();if(a==='save-analysis')return saveAnalysis();if(a==='appointment'){document.getElementById('inputText').value='Dentiste Théo mardi 6 octobre à 16h30.';return}if(a==='sport'){document.getElementById('inputText').value='Hayden football mercredi à 17h30 toutes les semaines.';return}if(a==='voice'){document.getElementById('inputText').focus();toast('Écris ou colle une information');return}if(a==='add-child'){toast('Ajout enfant prévu ensuite');return}if(a==='reset-demo'){const s=state();s.inbox=[{id:'demo_rugby',source:'ÉcoleDirecte • message',icon:'🏉',title:'Rugby',text:'Théo • séances scolaires',tag:'Sport scolaire',date:'2026-09-18',time:'10:25',endTime:'11:25',repeat:'weekly',repeatWeekday:5,materials:'tenue de sport, baskets, gourde',action:'Répondre si disponible pour accompagner',exceptions:['2026-10-09']}];save(s);toast('Exemple rugby chargé');return}if(a==='install'){if(deferredPrompt){deferredPrompt.prompt();deferredPrompt.userChoice.finally(()=>deferredPrompt=null)}else toast('iPhone : Partager → Sur l’écran d’accueil')}
   });
-  document.getElementById('photoInput').addEventListener('change',e=>selectPhoto(e.target.files?.[0]));
-  window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e;});
-  init();
+  document.getElementById('photoInput').addEventListener('change',e=>selectPhoto(e.target.files?.[0]));window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();deferredPrompt=e});ensureState();
 })();
