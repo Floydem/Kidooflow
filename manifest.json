@@ -1,0 +1,9 @@
+{
+  "name":"KidooFlow",
+  "short_name":"KidooFlow",
+  "start_url":"./",
+  "display":"standalone",
+  "background_color":"#f5f7fb",
+  "theme_color":"#6256ee",
+  "description":"Assistant familial et scolaire KidooFlow"
+}
