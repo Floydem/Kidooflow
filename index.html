@@ -19,13 +19,13 @@
 
     <section class="page active" data-page="today">
       <div class="hero">
-        <small>Prototype V0.5</small>
+        <small>Prototype V0.6</small>
         <h2>Tout ce qui mérite ton attention, au même endroit.</h2>
-        <p>ÉcoleDirecte, cahier papier, sport, santé et messages transformés en événements et tâches simples.</p>
-        <div class="chips"><span id="inboxChip">4 éléments Inbox</span><span>2 enfants</span><span>OCR local + analyse structurée</span></div>
+        <p>Messages, devoirs, emploi du temps, sport et rendez-vous transformés en informations utiles.</p>
+        <div class="chips"><span id="inboxChip">0 élément Inbox</span><span>2 enfants</span><span>Import scolaire intelligent</span></div>
       </div>
       <div class="section-head"><h3>Aujourd’hui</h3><button class="link" data-nav="agenda">Agenda</button></div>
-      <div class="stats"><article><b id="eventCount">0</b><span>événements</span></article><article><b>2</b><span>à faire</span></article><article><b id="inboxCount">4</b><span>Inbox</span></article><article><b>0</b><span>en retard 🎉</span></article></div>
+      <div class="stats"><article><b id="eventCount">0</b><span>événements</span></article><article><b id="homeworkCount">0</b><span>devoirs</span></article><article><b id="inboxCount">0</b><span>Inbox</span></article><article><b id="timetableCount">0</b><span>cours aujourd’hui</span></article></div>
       <div class="section-head"><h3>Priorités</h3><button class="link" data-nav="inbox">Voir Inbox</button></div>
       <div id="todayList" class="list"></div>
     </section>
@@ -38,11 +38,13 @@
 
     <section class="page" data-page="add">
       <div class="section-head first"><h3>Ajouter à KidooFlow</h3></div>
-      <div class="quick-actions">
-        <button data-action="photo">🏫<span>ÉcoleDirecte</span></button>
-        <button data-action="homework">📚<span>Cahier</span></button>
-        <button data-action="voice">🎙️<span>Dicter</span></button>
+      <div class="quick-actions six">
+        <button data-action="import-message">🏫<span>Message école</span></button>
+        <button data-action="import-homework">📚<span>Devoirs</span></button>
+        <button data-action="import-timetable">🗓️<span>Emploi du temps</span></button>
         <button data-action="appointment">📅<span>Rendez-vous</span></button>
+        <button data-action="sport">⚽️<span>Sport</span></button>
+        <button data-action="voice">🎙️<span>Texte rapide</span></button>
       </div>
       <div class="composer">
         <textarea id="inputText" placeholder="Ex. : Dentiste Théo mardi 6 octobre à 16h30.\n\nOu colle ici un message ÉcoleDirecte."></textarea>
@@ -56,21 +58,29 @@
     </section>
 
     <section class="page" data-page="inbox">
-      <div class="section-head first"><div><h3>Inbox</h3><small>Vérifie avant d’envoyer dans l’agenda</small></div><button class="link" data-action="reset">Réinitialiser</button></div>
+      <div class="section-head first"><div><h3>Inbox</h3><small>Vérifie avant d’envoyer dans l’agenda</small></div><button class="link" data-action="reset-demo">Démo</button></div>
       <div id="inboxList" class="list"></div>
     </section>
 
     <section class="page" data-page="children">
-      <div class="section-head first"><h3>Enfants</h3><button class="link" data-action="add-child">+ Ajouter</button></div>
-      <div class="list">
-        <article class="child"><div class="avatar">🧑‍🚀</div><div><h4>Hayden</h4><p>6e • ÉcoleDirecte<br>Emploi du temps, devoirs et messages</p></div><span>Collège</span></article>
-        <article class="child"><div class="avatar green">🎨</div><div><h4>Théo</h4><p>Primaire • Cahier papier + infos école<br>Sorties et activités spécifiques</p></div><span>Primaire</span></article>
+      <div class="section-head first"><h3>Scolarité</h3><button class="link" data-action="add-child">+ Enfant</button></div>
+      <div class="child-switch" id="childSwitch">
+        <button class="active" data-child="Hayden">Hayden <small>6e</small></button>
+        <button data-child="Théo">Théo <small>Primaire</small></button>
       </div>
+      <article class="school-card">
+        <div class="school-card-head"><div><span class="eyebrow">EMPLOI DU TEMPS</span><h3 id="timetableTitle">Hayden • semaine</h3></div><button class="compact-btn" data-action="import-timetable">Importer</button></div>
+        <div id="timetableView" class="timetable-view"></div>
+      </article>
+      <article class="school-card">
+        <div class="school-card-head"><div><span class="eyebrow">DEVOIRS</span><h3 id="homeworkTitle">À venir</h3></div><button class="compact-btn" data-action="import-homework">Ajouter par capture</button></div>
+        <div id="homeworkView" class="homework-view"></div>
+      </article>
       <div class="section-head"><h3>Sources</h3></div>
       <div class="list">
-        <article class="card"><div class="ico">🏫</div><div><h4>ÉcoleDirecte</h4><p>Capture → OCR local → objet, date, heure et action → Inbox.</p></div></article>
-        <article class="card"><div class="ico">📚</div><div><h4>Cahier papier</h4><p>Photo ou texte → devoirs proposés.</p></div></article>
-        <article class="card"><div class="ico">⚽️</div><div><h4>Sport & santé</h4><p>Ajout manuel, récurrence et rendez-vous.</p></div></article>
+        <article class="card"><div class="ico">🏫</div><div><h4>ÉcoleDirecte</h4><p>Message → objet, date utile, horaire, récurrence, matériel et action.</p></div></article>
+        <article class="card"><div class="ico">📚</div><div><h4>Devoirs</h4><p>Capture ÉcoleDirecte ou cahier papier → devoirs structurés par date.</p></div></article>
+        <article class="card"><div class="ico">🗓️</div><div><h4>Emploi du temps</h4><p>Capture puis correction rapide des cours détectés. Modification manuelle possible.</p></div></article>
       </div>
     </section>
   </main>
@@ -80,48 +90,57 @@
     <button data-nav="agenda">▦<span>Agenda</span></button>
     <button class="add" data-nav="add">＋<span>Ajouter</span></button>
     <button data-nav="inbox">▣<span>Inbox</span></button>
-    <button data-nav="children">☺<span>Enfants</span></button>
+    <button data-nav="children">☺<span>Scolarité</span></button>
   </nav>
 
   <input id="photoInput" type="file" accept="image/*" hidden>
 
-  <div id="photoModal" class="modal" aria-hidden="true">
+  <div id="importModal" class="modal" aria-hidden="true">
     <div class="sheet">
       <div class="grab"></div>
-      <div class="modal-head"><div><h3>Capture ÉcoleDirecte</h3><p>L’image reste sur cet appareil. KidooFlow lit puis structure le contenu.</p></div><button class="icon-button" data-action="close-photo">✕</button></div>
-      <div id="photoEmpty" class="photo-empty"><span>🏫</span><b>Choisis une capture ÉcoleDirecte</b><small>Devoir, message, sortie, rendez-vous, vie scolaire…</small><button class="secondary" data-action="choose-photo">Choisir une image</button></div>
+      <div class="modal-head"><div><h3 id="importTitle">Importer</h3><p id="importSubtitle">Choisis une capture.</p></div><button class="icon-button" data-action="close-import">✕</button></div>
+      <div id="photoEmpty" class="photo-empty"><span id="importEmoji">🏫</span><b id="importEmptyTitle">Choisis une capture</b><small id="importEmptyHint">KidooFlow va lire puis structurer le contenu.</small><button class="secondary" data-action="choose-photo">Choisir une image</button></div>
       <div id="photoWorkspace" class="photo-workspace hidden">
         <img id="photoPreview" alt="Capture sélectionnée">
         <div class="file-row"><span id="photoName"></span><button class="link" data-action="choose-photo">Changer</button></div>
         <button id="ocrButton" class="primary" data-action="run-ocr">🔎 Lire et analyser la capture</button>
         <div id="ocrProgress" class="progress-wrap hidden"><div class="progress"><i id="ocrProgressBar"></i></div><small id="ocrProgressText">Préparation…</small></div>
-        <div id="ocrResult" class="ocr-result hidden">
-          <div class="result-heading"><b>Ce que KidooFlow a compris</b><button class="link" data-action="reanalyze-ocr">↻ Réanalyser</button></div>
-          <label>Objet / titre<input id="ocrTitle" type="text" placeholder="Ex. Sortie piscine"></label>
-          <div class="form-grid">
-            <label>Enfant<select id="ocrChild"><option value="À confirmer">À confirmer</option><option>Hayden</option><option>Théo</option><option>Toute la famille</option></select></label>
-            <label>Catégorie<select id="ocrCategory"><option>École</option><option>Devoirs</option><option>Événement</option><option>Message</option><option>Vie scolaire</option><option>Action</option></select></label>
-          </div>
-          <div class="form-grid">
-            <label>Date<input id="ocrDate" type="date"></label>
-            <label>Heure<input id="ocrTime" type="time"></label>
-          </div>
-          <label>Action à retenir<input id="ocrAction" type="text" placeholder="Ex. Signer l’autorisation"></label>
-          <div id="ocrDetected" class="detected"></div>
+
+        <div id="messageResult" class="ocr-result hidden">
+          <div class="result-heading"><b>Ce que KidooFlow a compris</b><button class="link" data-action="reanalyze-message">↻ Réanalyser</button></div>
+          <label>Objet / titre<input id="msgTitle" type="text"></label>
+          <div class="form-grid"><label>Enfant<select id="msgChild"><option>Hayden</option><option>Théo</option><option value="À confirmer">À confirmer</option><option>Toute la famille</option></select></label><label>Catégorie<select id="msgCategory"><option>Sport scolaire</option><option>Événement</option><option>Message</option><option>Action</option><option>Vie scolaire</option><option>École</option></select></label></div>
+          <div class="form-grid"><label>Date de début<input id="msgDate" type="date"></label><label>Répétition<select id="msgRepeat"><option value="">Aucune</option><option value="weekly">Chaque semaine</option></select></label></div>
+          <div class="form-grid"><label>Début<input id="msgStart" type="time"></label><label>Fin<input id="msgEnd" type="time"></label></div>
+          <label>À prévoir<input id="msgMaterials" type="text" placeholder="Ex. tenue de sport, baskets, gourde"></label>
+          <label>Action parent<input id="msgAction" type="text" placeholder="Ex. répondre si disponible"></label>
+          <label>Date(s) sans séance<input id="msgExceptions" type="text" placeholder="Ex. 2026-10-09"></label>
+          <div id="messageDetected" class="detected"></div>
           <details class="raw-ocr"><summary>Voir / corriger le texte OCR</summary><textarea id="ocrText"></textarea></details>
-          <button class="primary coral" data-action="send-photo-inbox">Envoyer dans l’Inbox</button>
+          <button class="primary coral" data-action="send-message-inbox">Envoyer dans l’Inbox</button>
+        </div>
+
+        <div id="homeworkResult" class="ocr-result hidden">
+          <div class="result-heading"><b>Devoirs détectés</b><button class="link" data-action="add-homework-row">+ Ligne</button></div>
+          <div class="form-grid"><label>Enfant<select id="hwChild"><option>Hayden</option><option>Théo</option></select></label><label>Source<select id="hwSource"><option>ÉcoleDirecte</option><option>Cahier papier</option></select></label></div>
+          <div id="homeworkRows" class="editable-rows"></div>
+          <details class="raw-ocr"><summary>Voir / corriger le texte OCR</summary><textarea id="homeworkOcrText"></textarea></details>
+          <button class="primary coral" data-action="save-homework">Enregistrer les devoirs</button>
+        </div>
+
+        <div id="timetableResult" class="ocr-result hidden">
+          <div class="result-heading"><b>Cours détectés</b><button class="link" data-action="add-course-row">+ Cours</button></div>
+          <label>Enfant<select id="ttChild"><option>Hayden</option><option>Théo</option></select></label>
+          <div id="courseRows" class="editable-rows"></div>
+          <div class="detected">L’OCR d’une grille peut se tromper. Corrige simplement les lignes avant d’enregistrer.</div>
+          <details class="raw-ocr"><summary>Voir le texte OCR</summary><textarea id="timetableOcrText"></textarea></details>
+          <button class="primary coral" data-action="save-timetable">Enregistrer l’emploi du temps</button>
         </div>
       </div>
     </div>
   </div>
 
-  <div id="sourceModal" class="modal" aria-hidden="true">
-    <div class="sheet compact">
-      <div class="modal-head"><div><h3>Source originale</h3><p>Capture conservée localement sur cet appareil.</p></div><button class="icon-button" data-action="close-source">✕</button></div>
-      <img id="sourceImage" class="source-image" alt="Source originale">
-      <div id="sourceText" class="source-text"></div>
-    </div>
-  </div>
+  <div id="sourceModal" class="modal" aria-hidden="true"><div class="sheet compact"><div class="modal-head"><div><h3>Source originale</h3><p>Capture conservée localement sur cet appareil.</p></div><button class="icon-button" data-action="close-source">✕</button></div><img id="sourceImage" class="source-image" alt="Source originale"><div id="sourceText" class="source-text"></div></div></div>
 
   <div id="toast" class="toast"></div>
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
