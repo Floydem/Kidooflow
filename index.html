@@ -19,22 +19,20 @@
 
     <section class="page active" data-page="today">
       <div class="hero">
-        <small>Prototype V0.4</small>
+        <small>Prototype V0.5</small>
         <h2>Tout ce qui mérite ton attention, au même endroit.</h2>
         <p>ÉcoleDirecte, cahier papier, sport, santé et messages transformés en événements et tâches simples.</p>
-        <div class="chips"><span id="inboxChip">4 éléments Inbox</span><span>2 enfants</span><span>OCR local</span></div>
+        <div class="chips"><span id="inboxChip">4 éléments Inbox</span><span>2 enfants</span><span>OCR local + analyse structurée</span></div>
       </div>
       <div class="section-head"><h3>Aujourd’hui</h3><button class="link" data-nav="agenda">Agenda</button></div>
-      <div class="stats"><article><b id="eventCount">3</b><span>événements</span></article><article><b>2</b><span>à faire</span></article><article><b id="inboxCount">4</b><span>Inbox</span></article><article><b>0</b><span>en retard 🎉</span></article></div>
+      <div class="stats"><article><b id="eventCount">0</b><span>événements</span></article><article><b>2</b><span>à faire</span></article><article><b id="inboxCount">4</b><span>Inbox</span></article><article><b>0</b><span>en retard 🎉</span></article></div>
       <div class="section-head"><h3>Priorités</h3><button class="link" data-nav="inbox">Voir Inbox</button></div>
       <div id="todayList" class="list"></div>
     </section>
 
     <section class="page" data-page="agenda">
-      <div class="section-head first"><h3>Agenda familial</h3><button class="link" data-action="today">Aujourd’hui</button></div>
-      <div class="week">
-        <button class="day active">Mar<br><b>15</b></button><button class="day">Mer<br><b>16</b></button><button class="day">Jeu<br><b>17</b></button><button class="day">Ven<br><b>18</b></button><button class="day">Sam<br><b>19</b></button><button class="day">Dim<br><b>20</b></button><button class="day">Lun<br><b>21</b></button>
-      </div>
+      <div class="section-head first agenda-title"><div><h3>Agenda familial</h3><small id="selectedDateLabel"></small></div><button class="link" data-action="today">Aujourd’hui</button></div>
+      <div class="week-nav"><button data-action="prev-week" aria-label="Semaine précédente">‹</button><div id="agendaWeek" class="week"></div><button data-action="next-week" aria-label="Semaine suivante">›</button></div>
       <div id="agendaList" class="list"></div>
     </section>
 
@@ -58,7 +56,7 @@
     </section>
 
     <section class="page" data-page="inbox">
-      <div class="section-head first"><h3>Inbox</h3><button class="link" data-action="reset">Réinitialiser</button></div>
+      <div class="section-head first"><div><h3>Inbox</h3><small>Vérifie avant d’envoyer dans l’agenda</small></div><button class="link" data-action="reset">Réinitialiser</button></div>
       <div id="inboxList" class="list"></div>
     </section>
 
@@ -70,7 +68,7 @@
       </div>
       <div class="section-head"><h3>Sources</h3></div>
       <div class="list">
-        <article class="card"><div class="ico">🏫</div><div><h4>ÉcoleDirecte</h4><p>Capture → OCR local → validation dans l’Inbox.</p></div></article>
+        <article class="card"><div class="ico">🏫</div><div><h4>ÉcoleDirecte</h4><p>Capture → OCR local → objet, date, heure et action → Inbox.</p></div></article>
         <article class="card"><div class="ico">📚</div><div><h4>Cahier papier</h4><p>Photo ou texte → devoirs proposés.</p></div></article>
         <article class="card"><div class="ico">⚽️</div><div><h4>Sport & santé</h4><p>Ajout manuel, récurrence et rendez-vous.</p></div></article>
       </div>
@@ -90,21 +88,27 @@
   <div id="photoModal" class="modal" aria-hidden="true">
     <div class="sheet">
       <div class="grab"></div>
-      <div class="modal-head"><div><h3>Capture ÉcoleDirecte</h3><p>L’image reste sur cet appareil. L’OCR est effectué dans le navigateur.</p></div><button class="icon-button" data-action="close-photo">✕</button></div>
+      <div class="modal-head"><div><h3>Capture ÉcoleDirecte</h3><p>L’image reste sur cet appareil. KidooFlow lit puis structure le contenu.</p></div><button class="icon-button" data-action="close-photo">✕</button></div>
       <div id="photoEmpty" class="photo-empty"><span>🏫</span><b>Choisis une capture ÉcoleDirecte</b><small>Devoir, message, sortie, rendez-vous, vie scolaire…</small><button class="secondary" data-action="choose-photo">Choisir une image</button></div>
       <div id="photoWorkspace" class="photo-workspace hidden">
         <img id="photoPreview" alt="Capture sélectionnée">
         <div class="file-row"><span id="photoName"></span><button class="link" data-action="choose-photo">Changer</button></div>
-        <button id="ocrButton" class="primary" data-action="run-ocr">🔎 Lire la capture</button>
+        <button id="ocrButton" class="primary" data-action="run-ocr">🔎 Lire et analyser la capture</button>
         <div id="ocrProgress" class="progress-wrap hidden"><div class="progress"><i id="ocrProgressBar"></i></div><small id="ocrProgressText">Préparation…</small></div>
         <div id="ocrResult" class="ocr-result hidden">
-          <label>Texte reconnu<textarea id="ocrText"></textarea></label>
+          <div class="result-heading"><b>Ce que KidooFlow a compris</b><button class="link" data-action="reanalyze-ocr">↻ Réanalyser</button></div>
+          <label>Objet / titre<input id="ocrTitle" type="text" placeholder="Ex. Sortie piscine"></label>
           <div class="form-grid">
             <label>Enfant<select id="ocrChild"><option value="À confirmer">À confirmer</option><option>Hayden</option><option>Théo</option><option>Toute la famille</option></select></label>
             <label>Catégorie<select id="ocrCategory"><option>École</option><option>Devoirs</option><option>Événement</option><option>Message</option><option>Vie scolaire</option><option>Action</option></select></label>
           </div>
-          <label>Titre<input id="ocrTitle" type="text"></label>
+          <div class="form-grid">
+            <label>Date<input id="ocrDate" type="date"></label>
+            <label>Heure<input id="ocrTime" type="time"></label>
+          </div>
+          <label>Action à retenir<input id="ocrAction" type="text" placeholder="Ex. Signer l’autorisation"></label>
           <div id="ocrDetected" class="detected"></div>
+          <details class="raw-ocr"><summary>Voir / corriger le texte OCR</summary><textarea id="ocrText"></textarea></details>
           <button class="primary coral" data-action="send-photo-inbox">Envoyer dans l’Inbox</button>
         </div>
       </div>
